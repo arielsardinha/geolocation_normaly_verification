@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocation_anomaly/brazil_border_data.dart';
+import 'package:geolocation_anomaly/physics_detector.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
@@ -141,11 +143,13 @@ class LocationAnomalyDetector {
 
 class HybridLocationGuard {
   final LocationAnomalyDetector _heuristicDetector = LocationAnomalyDetector();
-
+  final PhysicsMovementDetector _physicsDetector = PhysicsMovementDetector();
   final DetectFakeLocation _detector = DetectFakeLocation();
 
   StreamSubscription<Position>? _geoLocatorSubscription;
   Timer? _nativeCheckTimer;
+  Timer? _territoryCheckTimer;
+  bool _isOutsideTerritory = false;
 
   final Function(Position) onLocationUpdate;
   final Function(String) onFraudDetected;
@@ -161,6 +165,7 @@ class HybridLocationGuard {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return;
     }
+    _physicsDetector.start();
 
     _nativeCheckTimer?.cancel();
     _nativeCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
@@ -177,6 +182,32 @@ class HybridLocationGuard {
       }
     });
 
+    _territoryCheckTimer?.cancel();
+    _territoryCheckTimer = Timer.periodic(const Duration(seconds: 30), (
+      _,
+    ) async {
+      try {
+        Position? position = await Geolocator.getLastKnownPosition();
+        if (position != null) {
+          // Usa o algoritmo matemático offline
+          bool isInsideBrazil = BrazilBorderValidator.isPointInPolygon(
+            position,
+          );
+
+          if (!isInsideBrazil) {
+            _isOutsideTerritory = true;
+            onFraudDetected(
+              "FRAUDE: Coordenada fora das fronteiras brasileiras.",
+            );
+          } else {
+            _isOutsideTerritory = false;
+          }
+        }
+      } catch (e) {
+        print("Erro validação território: $e");
+      }
+    });
+
     final locationSettings = const LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 0,
@@ -190,6 +221,17 @@ class HybridLocationGuard {
   void _processGeolocatorPosition(Position position) {
     if (position.isMocked) {
       onFraudDetected("FRAUDE: Geolocator.isMocked retornou true.");
+      return;
+    }
+
+    if (_isOutsideTerritory) {
+      return;
+    }
+
+    if (_physicsDetector.isPhysicallyImpossible(position.speed)) {
+      onFraudDetected(
+        "FRAUDE: Movimento GPS detectado sem vibração física correspondente (Joystick?).",
+      );
       return;
     }
 
@@ -227,6 +269,8 @@ class HybridLocationGuard {
     _geoLocatorSubscription?.cancel();
     _nativeCheckTimer?.cancel();
     _heuristicDetector.reset();
+    _territoryCheckTimer?.cancel();
+    _physicsDetector.stop();
   }
 }
 
@@ -361,8 +405,8 @@ class _SecureLocationScreenState extends State<SecureLocationScreen> {
                 const SizedBox(height: 10),
                 if (_currentPosition != null)
                   Text(
-                    "Lat: ${_currentPosition!.latitude.toStringAsFixed(5)}\n"
-                    "Lng: ${_currentPosition!.longitude.toStringAsFixed(5)}",
+                    "Lat: ${_currentPosition!.latitude}\n"
+                    "Lng: ${_currentPosition!.longitude}",
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontFamily: 'monospace'),
                   )
