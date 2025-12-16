@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:detect_fake_location/detect_fake_location.dart';
 import 'package:geolocation_anomaly/brazil_border_data.dart';
 import 'package:geolocation_anomaly/location_anomaly_detector.dart';
@@ -131,12 +132,37 @@ class HybridLocationGuard {
     // -----------------------------------------------------------
     // CAMADA C: Fluxo Contínuo de GPS (Real-time)
     // -----------------------------------------------------------
-    final locationSettings = const LocationSettings(
-      accuracy:
-          LocationAccuracy.bestForNavigation, // Exige GPS de alta precisão
-      distanceFilter:
-          0, // Notifica qualquer mudança mínima (necessário para pegar micro-movimentos)
-    );
+    LocationSettings locationSettings;
+
+    if (Platform.isAndroid) {
+      locationSettings = AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0, // Aceita qualquer movimento mínimo
+        forceLocationManager:
+            true, // Força o uso do componente nativo mais confiável
+        intervalDuration: const Duration(
+          seconds: 1,
+        ), // OBRIGA o update a cada 1s (Heartbeat)
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: "GPS Guard Ativo",
+          notificationText: "Monitorando integridade da localização",
+          enableWakeLock: true, // Impede a CPU de dormir durante a validação
+        ),
+      );
+    } else if (Platform.isIOS) {
+      locationSettings = AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        activityType: ActivityType.fitness,
+        distanceFilter: 0,
+        pauseLocationUpdatesAutomatically: false, // Impede o iOS de pausar
+        showBackgroundLocationIndicator: true,
+      );
+    } else {
+      locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+      );
+    }
 
     _geoLocatorSubscription =
         Geolocator.getPositionStream(
@@ -145,11 +171,18 @@ class HybridLocationGuard {
           // 1. Filtro Rápido: Se já sabemos que está fora do país, nem processa o resto.
           if (_isOutsideTerritory) return;
 
-          // 2. Validação Física (Joystick Walk / Liveness)
-          // "O GPS diz que ele está andando, mas o acelerômetro diz que o celular está na mesa?"
+          // 1. CASO CAMINHADA (Joystick Walk)
           if (_physicsDetector.isJoystickWalk(position.speed)) {
-            onFraudDetected("FÍSICA: Movimento GPS sem tremor de mão.");
-            // Nota: Dependendo da regra de negócio, poderíamos dar um 'return' aqui.
+            onFraudDetected(
+              "FÍSICA: Caminhada GPS sem balanço físico correspondente.",
+            );
+          }
+          // 2. CASO ESTÁTICO (Suporte de Mesa / Emulador na Selfie) -- NOVO --
+          // Verifica se, mesmo parado, o celular tem o "pulso" da mão humana.
+          else if (_physicsDetector.isStaticFake(position.speed)) {
+            onFraudDetected(
+              "FÍSICA: Dispositivo estático demais (Mesa/Tripé/Emulador). Segure o celular na mão.",
+            );
           }
 
           // 3. Validação Nativa do Pacote Geolocator

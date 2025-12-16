@@ -148,7 +148,7 @@ class _SecureLocationScreenState extends State<SecureLocationScreen> {
           const SizedBox(height: 8),
           if (_currentPosition != null)
             Text(
-              "Lat: ${_currentPosition!.latitude.toStringAsFixed(5)} | Lng: ${_currentPosition!.longitude.toStringAsFixed(5)}",
+              "Lat: ${_currentPosition!.latitude} | Lng: ${_currentPosition!.longitude}",
               style: const TextStyle(fontFamily: 'monospace'),
             ),
         ],
@@ -157,7 +157,10 @@ class _SecureLocationScreenState extends State<SecureLocationScreen> {
   }
 
   Widget _buildPhysicsTelemetry() {
-    bool isNaturalShake = _currentVariance > 0.02;
+    // 1. AJUSTE DE LIMIAR:
+    // Agora usamos 0.002 conforme calibrado no PhysicsMovementDetector.
+    // Qualquer valor acima disso é considerado tremor natural de mão.
+    bool isNaturalShake = _currentVariance > 0.001;
     Color shakeColor = isNaturalShake ? Colors.green : Colors.orange;
 
     bool isMoving = _currentSpeed > 0.4;
@@ -181,7 +184,8 @@ class _SecureLocationScreenState extends State<SecureLocationScreen> {
               children: [
                 const Text("Velocidade GPS:"),
                 Text(
-                  "${(_currentSpeed * 3.6).toStringAsFixed(1)} km/h",
+                  // Formatado para 1 casa decimal para ficar limpo na UI
+                  "${(_currentSpeed * 3.6)} km/h",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: isMoving ? Colors.blue : Colors.grey,
@@ -194,7 +198,11 @@ class _SecureLocationScreenState extends State<SecureLocationScreen> {
             const Text("Sensor de Mão (Micro-tremores):"),
             const SizedBox(height: 5),
             LinearProgressIndicator(
-              value: (_currentVariance * 10).clamp(0.0, 1.0),
+              // 2. AJUSTE DE ESCALA VISUAL:
+              // Como os valores são muito baixos (ex: 0.003), multiplicamos por 100.
+              // Assim, 0.003 vira 0.3 (30% da barra) e 0.01 vira 1.0 (barra cheia).
+              // Isso permite ver a barra "viva" mesmo com tremores sutis.
+              value: (_currentVariance * 100).clamp(0.0, 1.0),
               backgroundColor: Colors.grey[200],
               color: shakeColor,
               minHeight: 10,
@@ -204,7 +212,8 @@ class _SecureLocationScreenState extends State<SecureLocationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "Var: ${_currentVariance.toStringAsFixed(4)}",
+                  // Formatado para 5 casas para visualizar os micro-valores (ex: 0.00254)
+                  "Var: $_currentVariance",
                   style: const TextStyle(fontSize: 12),
                 ),
                 Text(

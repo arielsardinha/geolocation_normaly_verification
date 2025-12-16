@@ -1,7 +1,43 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 
+    Necessária para obter a localização GPS de alta precisão (em metros). 
+    Sem esta permissão, o aplicativo não consegue detectar micro-movimentos essenciais para a "Prova de Vida" (Liveness) 
+    e não consegue calcular a velocidade com a exatidão necessária para identificar fraudes de 
+    teletransporte ou movimento simulado.
+    -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- 
+    Necessária para compatibilidade com a localização baseada em rede (Torres de celular e Wi-Fi). 
+    O sistema Android exige que solicitemos tanto a localização precisa (Fine) quanto a aproximada (Coarse) 
+    para que o "Fused Location Provider" funcione corretamente e entregue os dados mais rápidos e estáveis.
+    -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- 
+    Permite que o aplicativo exiba uma notificação fixa na barra de status ("GPS Guard Ativo"). 
+    Isso sinaliza ao sistema Android que este processo é prioritário e não deve ser encerrado para 
+    economizar bateria enquanto o usuário está realizando a validação crítica de biometria e localização.
+     -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    
+    <!-- 
+    Obrigatória para dispositivos com Android 14 (API nível 34) ou superior. 
+    O Google agora exige que especifiquemos explicitamente que o serviço em primeiro 
+    plano está utilizando recursos de localização. Se esta permissão não for declarada, o 
+    aplicativo fechará abruptamente (crash) ao tentar iniciar o monitoramento em aparelhos modernos.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- 
+    Permissão crítica para a funcionalidade de "Prova de Vida". 
+    Ela impede que a CPU do celular entre em modo de suspensão profunda ("Doze Mode") 
+    enquanto os dados do acelerômetro e GPS estão sendo processados. Isso garante que a lógica de 
+    detecção de fraude continue rodando em tempo real, sem interrupções, mesmo que a tela do 
+    dispositivo apague momentaneamente.
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="geolocation_anomaly"
         android:name="${applicationName}"
